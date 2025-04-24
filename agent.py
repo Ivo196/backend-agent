@@ -76,4 +76,3 @@ if __name__ == "__main__":
         print("Max: ", response)
         chat_history.append(HumanMessage(content=user_input))
         chat_history.append(AIMessage(content=response))
-        print(chat_history)
