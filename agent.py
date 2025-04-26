@@ -1,17 +1,27 @@
+import os
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_community.tools import TavilySearchResults
-from langchain_core.messages import HumanMessage, AIMessage
 
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain.tools.retriever import create_retriever_tool
 
+from langchain.memory import ConversationBufferMemory
+from langchain_community.chat_message_histories.upstash_redis import UpstashRedisChatMessageHistory
+
 
 from dotenv import load_dotenv
 load_dotenv()
+
+history = UpstashRedisChatMessageHistory(
+    session_id="test",
+    url=os.getenv("UPSTASH_REDIS_URL"),
+    token=os.getenv("UPSTASH_REDIS_TOKEN")
+)
+
 
 pinecone =Pinecone()
 index = pinecone.Index("langchain")
@@ -37,8 +47,13 @@ prompt = ChatPromptTemplate.from_messages(
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
     MessagesPlaceholder(variable_name="agent_scratchpad"),
-
 ])
+
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages= True,
+    chat_memory=history
+)
 
 search = TavilySearchResults()
 retriever_tool = create_retriever_tool(
@@ -51,28 +66,26 @@ tools= [search, retriever_tool]
 agent = create_openai_functions_agent(
     llm=model,
     prompt=prompt,
-    tools=tools
+    tools=tools,
 )
 
 agentExecutor = AgentExecutor(
     agent=agent,
-    tools=tools
+    tools=tools,
+    memory=memory
     # verbose=True
 )
 
-def process_chat(agentExecutor, user_input, chat_history):
+def process_chat(agentExecutor, user_input):
     response = agentExecutor.invoke({
         "input": user_input,
-        "chat_history": chat_history
     })
     return(response['output'])
 
 if __name__ == "__main__":
 
-    chat_history = [ ]
     while True:
         user_input = input("You: ")
-        response = process_chat(agentExecutor, user_input, chat_history)
+        response = process_chat(agentExecutor, user_input)
         print("Max: ", response)
-        chat_history.append(HumanMessage(content=user_input))
-        chat_history.append(AIMessage(content=response))
+       
